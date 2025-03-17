@@ -1,0 +1,5 @@
+GOAL: Analyze current UI/UX of [specific application/website/product], identify pain points and areas for improvement considering user feedback, accessibility guidelines (WCAG), and modern design trends (e.g., Neumorphism, Glassmorphism, minimalism), then propose detailed, prioritized redesign solutions with specific, measurable goals for key metrics (e.g., task completion rate, user satisfaction (SUS), conversion rate, error rate), and justify design choices with supporting user research or established design principles. Include low-fidelity wireframes and high-fidelity mockups for at least three key screens/user flows, demonstrating proposed changes, along with a style guide specifying typography, color palette, and UI component library details. Consider different user personas and their specific needs throughout the process.
+
+IMPLEMENTATION: Created a style guide, updated the homepage, navbar and database page to implement the new design system, including adjustments to tailwind config and creating new CSS.
+
+COMPLETED: March 16, 2025 12:46 AM

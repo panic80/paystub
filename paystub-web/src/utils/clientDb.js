@@ -1,12 +1,20 @@
 import Dexie from 'dexie';
 
-// Create a Dexie database
+// Create and initialize Dexie database
 const db = new Dexie('paystubManager');
 
 // Define schema with versioning
 db.version(1).stores({
   individuals: '++id, name, address, phone_number, email',
   paystubs: '++id, individualId, name, date, filename, extractionDate, amount, company, fileData',
+}).upgrade(tx => {
+  console.log('Upgrading database schema...');
+});
+
+// Open database
+db.open().catch(err => {
+  console.error('Failed to open database:', err);
+  throw new Error('Failed to initialize database. Please ensure your browser supports IndexedDB.');
 });
 
 // Database service
@@ -150,4 +158,4 @@ export const clientDb = {
     
     return processed;
   },
-}; 
+};

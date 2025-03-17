@@ -376,4 +376,65 @@ export const getPayStatementCounts = async () => {
       reject(event.target.error);
     };
   });
-}; 
+};
+
+/**
+ * Get a pay statement by ID including its PDF data
+ * @param {number} id - The ID of the pay statement to retrieve
+ * @returns {Promise<Object>} The pay statement with PDF data
+ */
+export const getPayStatementWithPdf = async (id) => {
+  const db = await initDatabase();
+  
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(['pay_statements'], 'readonly');
+    const store = transaction.objectStore('pay_statements');
+    const request = store.get(id);
+    
+    request.onsuccess = (event) => {
+      const statement = event.target.result;
+      if (!statement) {
+        reject(new Error(`Pay statement with ID ${id} not found`));
+        return;
+      }
+      resolve(statement);
+    };
+    
+    request.onerror = (event) => {
+      console.error("Error getting pay statement:", event.target.error);
+      reject(event.target.error);
+    };
+  });
+};
+
+/**
+ * Download a pay statement's PDF
+ * @param {number} id - The ID of the pay statement
+ * @returns {Promise<void>} Promise that resolves when download starts
+ */
+export const downloadPayStatementPdf = async (id) => {
+  try {
+    const statement = await getPayStatementWithPdf(id);
+    if (!statement.fileData) {
+      throw new Error('No PDF data found for this pay statement');
+    }
+
+    // Create blob from stored data
+    const blob = new Blob([statement.fileData], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    
+    // Create download link
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = statement.filename || `paystub-${statement.date}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    
+    // Cleanup
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error("Error downloading PDF:", error);
+    throw error;
+  }
+};

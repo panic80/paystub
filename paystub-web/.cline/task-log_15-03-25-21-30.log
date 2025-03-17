@@ -1,0 +1,3 @@
+GOAL: Run the site's development server.
+IMPLMENTATION: Execute the `npm start` command in the terminal.
+COMPLETED:

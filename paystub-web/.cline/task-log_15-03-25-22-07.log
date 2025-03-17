@@ -1,0 +1,6 @@
+GOAL: Database screen should be sorted by individual and pay statements grouped by individuals.
+IMPLEMENTATION: 
+- In DatabasePage.js, individuals fetched via getIndividuals were sorted by name and used to create a mapping for grouping pay statements.
+- Pay statements were grouped by individual using the mapped individual names, and each group was sorted by date (newest first, with “Unknown_Date” handled appropriately).
+- In DataTable.js, a useEffect hook was added to automatically expand all groups when grouped data is provided, ensuring that pay statements remain grouped by individual.
+COMPLETED: 15-03-25 22:07

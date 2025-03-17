@@ -1,8 +1,8 @@
 import { PDFDocument } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
 
-// Set the worker source for PDF.js
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+// Set the worker source for PDF.js using unpkg (more reliable than cdnjs)
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.js`;
 
 /**
  * Extract text from a PDF
@@ -196,4 +196,4 @@ export const splitPdf = async (pdfData, progressCallback = () => {}) => {
     console.error("Error splitting PDF:", error);
     throw new Error(`Failed to split PDF: ${error.message}`);
   }
-}; 
+};
