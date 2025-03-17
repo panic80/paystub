@@ -50,7 +50,7 @@ class ThemeAwareWidget:
             palette.setColor(QPalette.Disabled, QPalette.Light, QColor(53, 53, 53))
             palette.setColor(QPalette.Mid, QColor(90, 90, 90))
         else:
-            # Light theme
+            # Light theme - use default palette with a few customizations
             palette.setColor(QPalette.Window, QColor(240, 240, 240))
             palette.setColor(QPalette.WindowText, Qt.black)
             palette.setColor(QPalette.Base, QColor(255, 255, 255))
@@ -72,9 +72,6 @@ class ThemeAwareWidget:
 
         app.setPalette(palette)
         
-        # Force QStyle update to refresh all widgets
-        app.setStyle(app.style().objectName())
-        
         # Save theme preference to settings
         settings = QSettings("Paystub", "PaystubManager")
         settings.setValue("theme/dark_mode", dark_mode)
@@ -83,62 +80,21 @@ class ThemeAwareWidget:
         for instance in cls.theme_changed_instances:
             if hasattr(instance, 'updateStyle') and callable(instance.updateStyle):
                 instance.updateStyle()
-                # Force update on the widget and all its children
-                if isinstance(instance, QWidget):
-                    instance.setAutoFillBackground(True)
-                    instance.setPalette(palette)
-                    for child in instance.findChildren(QWidget):
-                        child.setAutoFillBackground(True)
-                        child.setPalette(palette)
-                        child.style().unpolish(child)
-                        child.style().polish(child)
-                        child.update()
-                    instance.repaint()
-        
-        # Force application-wide update
-        for widget in app.allWidgets():
-            # Ensure all widgets have proper background handling
-            if isinstance(widget, QWidget) and not isinstance(widget, QMainWindow):
-                widget.setAutoFillBackground(True)
-                
-            # Special handling for QFrame with "card" objectName
-            if isinstance(widget, QFrame) and widget.objectName() == "card":
-                card_palette = widget.palette()
-                card_palette.setColor(QPalette.Window, QColor(palette.color(QPalette.Base)))
-                widget.setPalette(card_palette)
-            
-            # Special handling for QLabel to ensure transparent background
-            if isinstance(widget, QLabel):
-                widget.setAutoFillBackground(False)
-                widget.setStyleSheet(f"background-color: transparent; color: {palette.color(QPalette.WindowText).name()};")
-            
-            # Special handling for QTableWidget
-            if isinstance(widget, QTableWidget):
-                widget.setAlternatingRowColors(True)
-                
-            # Unpolish and polish to apply new style
-            widget.style().unpolish(widget)
-            widget.style().polish(widget)
-            widget.update()
     
     @classmethod
     def load_saved_theme(cls):
         """Load the theme from saved settings"""
         settings = QSettings("Paystub", "PaystubManager")
+        # If no setting exists, use system default
         if settings.contains("theme/dark_mode"):
             cls.set_application_theme(settings.value("theme/dark_mode", False, type=bool))
-        else:
-            # Default to light theme
-            cls.set_application_theme(False)
     
     def __init__(self):
         """Register instance for theme notifications"""
         ThemeAwareWidget.theme_changed_instances.append(self)
-        if isinstance(self, QWidget):
-            self.setAttribute(Qt.WA_StyledBackground, True)
         
     def get_theme_colors(self):
-        palette = QApplication.instance().palette()
+        palette = self.palette()
         return {
             'window': palette.color(QPalette.Window).name(),
             'windowText': palette.color(QPalette.WindowText).name(),
@@ -218,40 +174,32 @@ class SearchLineEdit(QLineEdit, ThemeAwareWidget):
         self.setMinimumWidth(200)
         
         # Add search icon
-        self.addAction(self.style().standardIcon(QStyle.SP_FileDialogContentsView), QLineEdit.LeadingPosition)
+        self.searchIcon = self.style().standardIcon(QStyle.SP_FileDialogContentsView)
+        self.addAction(self.searchIcon, QLineEdit.LeadingPosition)
         
-        # Connect text changed signal
-        self.textChanged.connect(self.onTextChanged)
-        
-        # Initial style update
         self.updateStyle()
         
+        # Connect signals
+        self.textChanged.connect(self.onTextChanged)
+        
     def updateStyle(self):
-        """Update the search input styling based on current theme"""
         colors = self.get_theme_colors()
-        
-        # Set background and text colors
-        self.setAutoFillBackground(True)
-        palette = self.palette()
-        palette.setColor(QPalette.Base, QColor(colors['base']))
-        palette.setColor(QPalette.Text, QColor(colors['text']))
-        self.setPalette(palette)
-        
-        # Apply stylesheet for additional styling
         self.setStyleSheet(f"""
             QLineEdit {{
+                border: 1px solid {colors['mid']};
+                border-radius: 5px;
+                padding: 8px 8px 8px 30px;  /* Left padding for icon */
                 background-color: {colors['base']};
                 color: {colors['text']};
-                border: 1px solid {colors['mid']};
-                border-radius: 15px;
-                padding: 5px 10px 5px 30px;
-                min-height: 30px;
+                selection-background-color: {colors['highlight']};
+                selection-color: {colors['highlightedText']};
             }}
             QLineEdit:focus {{
-                border: 1px solid {colors['highlight']};
+                border-color: {colors['highlight']};
+                border-width: 2px;
             }}
-            QLineEdit::placeholder {{
-                color: {QColor(colors['text']).lighter(150).name()};
+            QLineEdit:hover:!focus {{
+                background-color: {QColor(colors['base']).lighter(105).name()};
             }}
         """)
     
@@ -262,7 +210,7 @@ class SearchLineEdit(QLineEdit, ThemeAwareWidget):
             self.actions()[0].setIcon(self.style().standardIcon(QStyle.SP_DialogApplyButton))
         else:
             # Reset to default search icon
-            self.actions()[0].setIcon(self.style().standardIcon(QStyle.SP_FileDialogContentsView))
+            self.actions()[0].setIcon(self.searchIcon)
     
     def keyPressEvent(self, event):
         """Custom key press handling, with escape to clear"""
@@ -302,11 +250,6 @@ class EnhancedTable(QTableWidget, ThemeAwareWidget):
             QTableWidget::item {{
                 padding: 5px;
                 border-bottom: 1px solid {QColor(colors['mid']).lighter(140).name()};
-                background-color: {colors['base']};
-                color: {colors['text']};
-            }}
-            QTableWidget::item:alternate {{
-                background-color: {colors['alternateBase']};
             }}
             QTableWidget::item:selected {{
                 background-color: {colors['highlight']};
@@ -327,36 +270,7 @@ class EnhancedTable(QTableWidget, ThemeAwareWidget):
             QTableWidget:focus {{
                 border: 1px solid {colors['highlight']};
             }}
-            QScrollBar:vertical {{
-                background-color: {colors['base']};
-                width: 14px;
-                margin: 0px;
-            }}
-            QScrollBar::handle:vertical {{
-                background-color: {colors['mid']};
-                min-height: 20px;
-                border-radius: 7px;
-            }}
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-                height: 0px;
-            }}
-            QScrollBar:horizontal {{
-                background-color: {colors['base']};
-                height: 14px;
-                margin: 0px;
-            }}
-            QScrollBar::handle:horizontal {{
-                background-color: {colors['mid']};
-                min-width: 20px;
-                border-radius: 7px;
-            }}
-            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
-                width: 0px;
-            }}
         """)
-        
-        # Ensure alternating row colors are enabled
-        self.setAlternatingRowColors(True)
 
     def filter_rows(self, text, column_indices=None):
         """Filter table rows based on search text in specified columns.
@@ -489,136 +403,11 @@ class EnhancedTable(QTableWidget, ThemeAwareWidget):
 class DatabaseViewer(QWidget, ThemeAwareWidget):
     def __init__(self, db_path, pdf_folder):
         super().__init__()
-        ThemeAwareWidget.__init__(self)
         self.db_path = db_path
         self.pdf_folder = pdf_folder
         self.current_individual_id = None
         self.current_individual_name = None
-        self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setAutoFillBackground(True)
         self.initUI()
-        
-    def updateStyle(self):
-        colors = self.get_theme_colors()
-        
-        # Update the widget's palette
-        palette = self.palette()
-        palette.setColor(QPalette.Window, QColor(colors['window']))
-        palette.setColor(QPalette.WindowText, QColor(colors['windowText']))
-        palette.setColor(QPalette.Base, QColor(colors['base']))
-        palette.setColor(QPalette.AlternateBase, QColor(colors['alternateBase']))
-        palette.setColor(QPalette.Text, QColor(colors['text']))
-        palette.setColor(QPalette.Button, QColor(colors['button']))
-        palette.setColor(QPalette.ButtonText, QColor(colors['buttonText']))
-        self.setPalette(palette)
-        
-        # Style sheet for components
-        self.setStyleSheet(f"""
-            QWidget {{
-                background-color: {colors['window']};
-                color: {colors['windowText']};
-            }}
-            QFrame#card {{
-                background-color: {colors['base']};
-                border: 1px solid {colors['mid']};
-                border-radius: 8px;
-                padding: 15px;
-            }}
-            QPushButton {{
-                background-color: {colors['button']};
-                color: {colors['buttonText']};
-                border: 1px solid {colors['mid']};
-                border-radius: 4px;
-                padding: 8px 16px;
-                min-height: 30px;
-            }}
-            QPushButton:hover {{
-                background-color: {colors['highlight']};
-                color: {colors['highlightedText']};
-            }}
-            QLabel {{
-                background: transparent;
-                color: {colors['windowText']};
-            }}
-            QComboBox {{
-                background-color: {colors['base']};
-                color: {colors['text']};
-                border: 1px solid {colors['mid']};
-                border-radius: 4px;
-                padding: 4px 8px;
-                min-height: 25px;
-            }}
-            QComboBox::drop-down {{
-                subcontrol-origin: padding;
-                subcontrol-position: top right;
-                width: 20px;
-                border-left: 1px solid {colors['mid']};
-            }}
-            QComboBox QAbstractItemView {{
-                background-color: {colors['base']};
-                color: {colors['text']};
-                selection-background-color: {colors['highlight']};
-                selection-color: {colors['highlightedText']};
-            }}
-            QLineEdit {{
-                background-color: {colors['base']};
-                color: {colors['text']};
-                border: 1px solid {colors['mid']};
-                border-radius: 4px;
-                padding: 4px 8px;
-            }}
-            QLineEdit:focus {{
-                border: 1px solid {colors['highlight']};
-            }}
-            QSplitter::handle {{
-                background-color: {colors['mid']};
-            }}
-            QScrollBar:vertical {{
-                background-color: {colors['base']};
-                width: 14px;
-                margin: 0px;
-            }}
-            QScrollBar::handle:vertical {{
-                background-color: {colors['mid']};
-                min-height: 20px;
-                border-radius: 7px;
-            }}
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-                height: 0px;
-            }}
-            QScrollBar:horizontal {{
-                background-color: {colors['base']};
-                height: 14px;
-                margin: 0px;
-            }}
-            QScrollBar::handle:horizontal {{
-                background-color: {colors['mid']};
-                min-width: 20px;
-                border-radius: 7px;
-            }}
-            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
-                width: 0px;
-            }}
-        """)
-        
-        # Force update all child widgets
-        for widget in self.findChildren(QWidget):
-            if isinstance(widget, QFrame) and widget.property("class") == "card":
-                widget.setAutoFillBackground(True)
-                widget_palette = widget.palette()
-                widget_palette.setColor(QPalette.Window, QColor(colors['base']))
-                widget.setPalette(widget_palette)
-            
-            # Special handling for QLabel to ensure transparent background
-            if isinstance(widget, QLabel):
-                widget.setAutoFillBackground(False)
-                widget.setStyleSheet(f"background-color: transparent; color: {colors['windowText']};")
-            
-            widget.style().unpolish(widget)
-            widget.style().polish(widget)
-            widget.update()
-        
-        self.repaint()
         
     def initUI(self):
         layout = QVBoxLayout()
@@ -1030,94 +819,16 @@ class DatabaseViewer(QWidget, ThemeAwareWidget):
 class IndividualInfoDialog(QDialog, ThemeAwareWidget):
     def __init__(self, db_path, name):
         super().__init__()
-        ThemeAwareWidget.__init__(self)
         self.db_path = db_path
         self.name = name
-        self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setAutoFillBackground(True)
         self.initUI()
         self.loadExistingData()
-
-    def updateStyle(self):
-        colors = self.get_theme_colors()
-        
-        # Update the dialog's palette
-        palette = self.palette()
-        palette.setColor(QPalette.Window, QColor(colors['window']))
-        palette.setColor(QPalette.WindowText, QColor(colors['windowText']))
-        palette.setColor(QPalette.Base, QColor(colors['base']))
-        palette.setColor(QPalette.AlternateBase, QColor(colors['alternateBase']))
-        palette.setColor(QPalette.Text, QColor(colors['text']))
-        palette.setColor(QPalette.Button, QColor(colors['button']))
-        palette.setColor(QPalette.ButtonText, QColor(colors['buttonText']))
-        self.setPalette(palette)
-        
-        # Apply stylesheet
-        self.setStyleSheet(f"""
-            QDialog {{
-                background-color: {colors['window']};
-                color: {colors['windowText']};
-            }}
-            QLineEdit, QTextEdit {{
-                padding: 8px;
-                border: 1px solid {colors['mid']};
-                border-radius: 4px;
-                min-width: 300px;
-                background-color: {colors['base']};
-                color: {colors['text']};
-            }}
-            QLineEdit:focus, QTextEdit:focus {{
-                border-color: {colors['highlight']};
-            }}
-            QPushButton {{
-                padding: 8px 16px;
-                background-color: {colors['button']};
-                color: {colors['buttonText']};
-                border: 1px solid {colors['mid']};
-                border-radius: 4px;
-            }}
-            QPushButton#primary {{
-                background-color: {colors['highlight']};
-                color: {colors['highlightedText']};
-                border: none;
-            }}
-            QPushButton:hover {{
-                background-color: {colors['highlight']};
-                color: {colors['highlightedText']};
-            }}
-            QLabel {{
-                color: {colors['windowText']};
-                background: transparent;
-            }}
-            QLabel#header {{
-                font-size: 16px;
-                font-weight: bold;
-                margin-bottom: 10px;
-            }}
-        """)
-        
-        # Force update all child widgets
-        for widget in self.findChildren(QWidget):
-            # Special handling for QLabel to ensure transparent background
-            if isinstance(widget, QLabel):
-                widget.setAutoFillBackground(False)
-                widget.setStyleSheet(f"background-color: transparent; color: {colors['windowText']};")
-            else:
-                widget.setAutoFillBackground(True)
-                widget.setPalette(palette)
-            
-            widget.style().unpolish(widget)
-            widget.style().polish(widget)
-            widget.update()
-        
-        self.repaint()
 
     def initUI(self):
         colors = self.get_theme_colors()
         self.setStyleSheet(f"""
             QDialog {{
                 background-color: {colors['window']};
-                color: {colors['windowText']};
             }}
             QLineEdit, QTextEdit {{
                 padding: 8px;
@@ -1148,12 +859,20 @@ class IndividualInfoDialog(QDialog, ThemeAwareWidget):
             }}
             QLabel {{
                 color: {colors['windowText']};
-                background: transparent;
             }}
             QLabel#header {{
                 font-size: 16px;
                 font-weight: bold;
                 margin-bottom: 10px;
+            }}
+            QLabel#fieldLabel {{
+                font-weight: bold;
+            }}
+            QFrame#infoCard {{
+                background-color: {colors['base']};
+                border: 1px solid {colors['mid']};
+                border-radius: 8px;
+                padding: 15px;
             }}
         """)
         
@@ -1259,207 +978,157 @@ class PDFSplitterApp(QMainWindow, ThemeAwareWidget):
         ThemeAwareWidget.__init__(self)
         self.db_path = None
         self.pdf_folder = None
-        self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setAutoFillBackground(True)  # Add this line to ensure background is painted
         self.initUI()
         self.initialize_database()
-
+        
     def updateStyle(self):
         colors = self.get_theme_colors()
-        
-        # Update palette for this window
-        palette = self.palette()
-        palette.setColor(QPalette.Window, QColor(colors['window']))
-        palette.setColor(QPalette.WindowText, QColor(colors['windowText']))
-        palette.setColor(QPalette.Base, QColor(colors['base']))
-        palette.setColor(QPalette.AlternateBase, QColor(colors['alternateBase']))
-        palette.setColor(QPalette.Text, QColor(colors['text']))
-        palette.setColor(QPalette.Button, QColor(colors['button']))
-        palette.setColor(QPalette.ButtonText, QColor(colors['buttonText']))
-        self.setPalette(palette)
-
-        # Style sheet for the entire application
         stylesheet = f"""
             QMainWindow {{
                 background-color: {colors['window']};
-                color: {colors['windowText']};
             }}
             QWidget {{
                 background-color: {colors['window']};
                 color: {colors['windowText']};
-            }}
-            QFrame#card {{
-                background-color: {colors['base']};
-                border: 1px solid {colors['mid']};
-                border-radius: 8px;
-                padding: 15px;
             }}
             QToolBar {{
                 background-color: {colors['window']};
                 border: none;
                 border-bottom: 1px solid {colors['mid']};
                 padding: 8px 4px;
-                spacing: 10px;
             }}
             QStatusBar {{
                 background-color: {colors['window']};
-                color: {colors['windowText']};
+                padding: 8px;
             }}
             QPushButton {{
+                padding: 8px 16px;
+                border-radius: 4px;
                 background-color: {colors['button']};
                 color: {colors['buttonText']};
                 border: 1px solid {colors['mid']};
-                border-radius: 4px;
-                padding: 8px 16px;
                 min-height: 30px;
             }}
             QPushButton:hover {{
                 background-color: {colors['highlight']};
                 color: {colors['highlightedText']};
             }}
-            QLabel {{
-                background: transparent;
-                color: {colors['windowText']};
+            QPushButton:pressed {{
+                background-color: {QColor(colors['highlight']).darker(120).name()};
             }}
             QLabel#headerLabel {{
                 font-size: 18px;
                 font-weight: bold;
                 margin: 10px 0px;
             }}
-            QComboBox {{
-                background-color: {colors['base']};
-                color: {colors['text']};
+            QFrame.card {{
                 border: 1px solid {colors['mid']};
-                border-radius: 4px;
-                padding: 4px 8px;
-                min-height: 25px;
-            }}
-            QComboBox::drop-down {{
-                subcontrol-origin: padding;
-                subcontrol-position: top right;
-                width: 20px;
-                border-left: 1px solid {colors['mid']};
-            }}
-            QComboBox QAbstractItemView {{
+                border-radius: 8px;
                 background-color: {colors['base']};
-                color: {colors['text']};
-                selection-background-color: {colors['highlight']};
-                selection-color: {colors['highlightedText']};
-            }}
-            QLineEdit {{
-                background-color: {colors['base']};
-                color: {colors['text']};
-                border: 1px solid {colors['mid']};
-                border-radius: 4px;
-                padding: 4px 8px;
-            }}
-            QLineEdit:focus {{
-                border: 1px solid {colors['highlight']};
-            }}
-            QScrollBar:vertical {{
-                background-color: {colors['base']};
-                width: 14px;
-                margin: 0px;
-            }}
-            QScrollBar::handle:vertical {{
-                background-color: {colors['mid']};
-                min-height: 20px;
-                border-radius: 7px;
-            }}
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-                height: 0px;
-            }}
-            QScrollBar:horizontal {{
-                background-color: {colors['base']};
-                height: 14px;
-                margin: 0px;
-            }}
-            QScrollBar::handle:horizontal {{
-                background-color: {colors['mid']};
-                min-width: 20px;
-                border-radius: 7px;
-            }}
-            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
-                width: 0px;
-            }}
-            QProgressDialog {{
-                background-color: {colors['window']};
-                color: {colors['windowText']};
-            }}
-            QProgressDialog QProgressBar {{
-                border: 1px solid {colors['mid']};
-                border-radius: 4px;
-                text-align: center;
-                background-color: {colors['base']};
-                color: {colors['text']};
-            }}
-            QProgressDialog QProgressBar::chunk {{
-                background-color: {colors['highlight']};
-            }}
-            QProgressDialog QLabel {{
-                background: transparent;
-                color: {colors['windowText']};
+                padding: 15px;
             }}
         """
+        
+        # Apply stylesheet to main window and central widget
         self.setStyleSheet(stylesheet)
-
-        # Update central widget explicitly
+        
+        # Force update the central widget explicitly
         central_widget = self.centralWidget()
         if central_widget:
+            # Force the central widget to take the window color
             central_widget.setAutoFillBackground(True)
+            palette = central_widget.palette()
+            palette.setColor(QPalette.Window, QColor(colors['window']))
             central_widget.setPalette(palette)
-
-            # Update all frames/cards
-            for frame in central_widget.findChildren(QFrame):
-                if frame.objectName() == "card":
-                    frame.setAutoFillBackground(True)
-                    frame_palette = frame.palette()
-                    frame_palette.setColor(QPalette.Window, QColor(colors['base']))
-                    frame.setPalette(frame_palette)
-
-            # Special handling for QLabel to ensure transparent background
-            for label in central_widget.findChildren(QLabel):
-                label.setAutoFillBackground(False)
-                label.setStyleSheet(f"background-color: transparent; color: {colors['windowText']};")
-
-            # Force update on all widgets
-            for widget in central_widget.findChildren(QWidget):
-                widget.style().unpolish(widget)
-                widget.style().polish(widget)
-                widget.update()
-
-        # Update status bar
-        if hasattr(self, 'status_bar'):
-            self.status_bar.setAutoFillBackground(True)
-            self.status_bar.setPalette(palette)
-            self.status_bar.update()
-
-        # Force repaint of the entire window
-        self.repaint()
-
-    def initUI(self):
-        # Create central widget with proper background handling
-        central_widget = QWidget()
-        central_widget.setAttribute(Qt.WA_StyledBackground, True)
-        central_widget.setAutoFillBackground(True)  # Add this line
-        self.setCentralWidget(central_widget)
-
-        # Set an explicit background color using the current theme
-        colors = self.get_theme_colors()
-        central_widget.setStyleSheet(f"background-color: {colors['window']};")
+            
+            # Force repaint all child widgets
+            for child in central_widget.findChildren(QWidget):
+                if isinstance(child, QFrame) and child.property("class") == "card":
+                    # Cards have their own background
+                    child_palette = child.palette()
+                    child_palette.setColor(QPalette.Window, QColor(colors['base']))
+                    child.setPalette(child_palette)
+                    child.setAutoFillBackground(True)
+                elif not isinstance(child, (QFrame, QPushButton, QLineEdit)):
+                    # For regular widgets, use window color
+                    child_palette = child.palette()
+                    child_palette.setColor(QPalette.Window, QColor(colors['window']))
+                    child.setPalette(child_palette)
+                    child.setAutoFillBackground(True)
         
-        # Set layout
+        # Update the status bar with correct colors
+        self.status_bar.setAutoFillBackground(True)
+        status_palette = self.status_bar.palette()
+        status_palette.setColor(QPalette.Window, QColor(colors['window']))
+        self.status_bar.setPalette(status_palette)
+        
+        # Update stats label
+        self.update_stats()
+        
+        # Force repaint
+        self.repaint()
+    
+    def initUI(self):
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(20, 10, 20, 20)
         main_layout.setSpacing(15)
-
-        # Create toolbar
+        
+        # Apply theme colors
+        colors = self.get_theme_colors()
+        self.setStyleSheet(f"""
+            QMainWindow {{
+                background-color: {colors['window']};
+            }}
+            QWidget {{
+                color: {colors['windowText']};
+            }}
+            QToolBar {{
+                background: {colors['window']};
+                border: none;
+                border-bottom: 1px solid {colors['mid']};
+                padding: 8px 4px;
+            }}
+            QStatusBar {{
+                background: {colors['window']};
+                padding: 8px;
+            }}
+            QPushButton {{
+                padding: 8px 16px;
+                border-radius: 4px;
+                background-color: {colors['button']};
+                color: {colors['buttonText']};
+                border: 1px solid {colors['mid']};
+                min-height: 30px;
+            }}
+            QPushButton:hover {{
+                background-color: {colors['highlight']};
+                color: {colors['highlightedText']};
+            }}
+            QPushButton:pressed {{
+                background-color: {QColor(colors['highlight']).darker(120).name()};
+            }}
+            QLabel#headerLabel {{
+                font-size: 18px;
+                font-weight: bold;
+                margin: 10px 0px;
+            }}
+            QFrame.card {{
+                border: 1px solid {colors['mid']};
+                border-radius: 8px;
+                background-color: {colors['base']};
+                padding: 15px;
+            }}
+        """)
+        
+        # Toolbar
         toolbar = QToolBar()
         toolbar.setIconSize(QSize(24, 24))
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
         
-        # Add toolbar actions
+        # Add toolbar actions with text labels
         split_action = toolbar.addAction(self.style().standardIcon(QStyle.SP_FileDialogStart), "Split PDF")
         split_action.setToolTip("Select and split a PDF file")
         split_action.triggered.connect(self.select_pdf)
@@ -1482,11 +1151,17 @@ class PDFSplitterApp(QMainWindow, ThemeAwareWidget):
         # Add visual separator before theme toggle
         toolbar.addSeparator()
         
-        # Add theme toggle button
+        # Add theme toggle button with improved visibility
         theme_toggle = ThemeToggle()
-        theme_toggle.setMinimumSize(36, 36)
+        theme_toggle.setMinimumSize(36, 36)  # Ensure consistent size
         toolbar.addWidget(theme_toggle)
-
+        
+        # Status bar
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.status_label = QLabel("Database Status: Initializing...")
+        self.status_bar.addWidget(self.status_label)
+        
         # Header
         header_label = QLabel("Paystub Manager")
         header_label.setObjectName("headerLabel")
@@ -1496,16 +1171,15 @@ class PDFSplitterApp(QMainWindow, ThemeAwareWidget):
         # Cards layout
         cards_layout = QHBoxLayout()
         cards_layout.setSpacing(15)
-
+        
         # PDF Upload Card
         pdf_card = QFrame()
-        pdf_card.setObjectName("card")  # Use card as object name instead of class property
-        pdf_card.setAttribute(Qt.WA_StyledBackground, True)
-        pdf_card.setAutoFillBackground(True)
+        pdf_card.setObjectName("card")
+        pdf_card.setProperty("class", "card")
         pdf_card_layout = QVBoxLayout(pdf_card)
         
         upload_icon = QLabel()
-        upload_icon.setPixmap(self.style().standardPixmap(QStyle.SP_ArrowUp).scaled(48, 48))
+        upload_icon.setPixmap(self.style().standardPixmap(QStyle.SP_ArrowUp).scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         upload_icon.setAlignment(Qt.AlignCenter)
         
         upload_title = QLabel("Upload PDF")
@@ -1524,16 +1198,16 @@ class PDFSplitterApp(QMainWindow, ThemeAwareWidget):
         pdf_card_layout.addWidget(upload_desc)
         pdf_card_layout.addWidget(upload_btn)
         pdf_card_layout.setAlignment(Qt.AlignCenter)
-
+        
         # View Database Card
         db_card = QFrame()
         db_card.setObjectName("card")
-        db_card.setAttribute(Qt.WA_StyledBackground, True)
-        db_card.setAutoFillBackground(True)
+        db_card.setProperty("class", "card")
         db_card_layout = QVBoxLayout(db_card)
         
         db_icon = QLabel()
-        db_icon.setPixmap(self.style().standardPixmap(QStyle.SP_FileDialogDetailedView).scaled(48, 48))
+        # Fix: Replace SP_DialogViewInfo with SP_FileDialogDetailedView
+        db_icon.setPixmap(self.style().standardPixmap(QStyle.SP_FileDialogDetailedView).scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         db_icon.setAlignment(Qt.AlignCenter)
         
         db_title = QLabel("View Statements")
@@ -1544,6 +1218,7 @@ class PDFSplitterApp(QMainWindow, ThemeAwareWidget):
         db_desc.setAlignment(Qt.AlignCenter)
         
         db_btn = QPushButton("Open Database")
+        # Fix: Replace SP_DialogViewInfo with SP_FileDialogDetailedView
         db_btn.setIcon(self.style().standardIcon(QStyle.SP_FileDialogDetailedView))
         db_btn.clicked.connect(self.view_database)
         
@@ -1552,16 +1227,16 @@ class PDFSplitterApp(QMainWindow, ThemeAwareWidget):
         db_card_layout.addWidget(db_desc)
         db_card_layout.addWidget(db_btn)
         db_card_layout.setAlignment(Qt.AlignCenter)
-
+        
         # Update Info Card
         info_card = QFrame()
         info_card.setObjectName("card")
-        info_card.setAttribute(Qt.WA_StyledBackground, True)
-        info_card.setAutoFillBackground(True)
+        info_card.setProperty("class", "card")
         info_card_layout = QVBoxLayout(info_card)
         
         info_icon = QLabel()
-        info_icon.setPixmap(self.style().standardPixmap(QStyle.SP_FileDialogInfoView).scaled(48, 48))
+        # Fix: Replace SP_FileDialogInfoView with SP_FileDialogInfoView (if used elsewhere)
+        info_icon.setPixmap(self.style().standardPixmap(QStyle.SP_FileDialogInfoView).scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         info_icon.setAlignment(Qt.AlignCenter)
         
         info_title = QLabel("Update Details")
@@ -1572,6 +1247,7 @@ class PDFSplitterApp(QMainWindow, ThemeAwareWidget):
         info_desc.setAlignment(Qt.AlignCenter)
         
         info_btn = QPushButton("Edit Information")
+        # Fix: Replace SP_DialogEditIcon with SP_FileDialogInfoView
         info_btn.setIcon(self.style().standardIcon(QStyle.SP_FileDialogInfoView))
         info_btn.clicked.connect(self.update_individual_info)
         
@@ -1580,7 +1256,7 @@ class PDFSplitterApp(QMainWindow, ThemeAwareWidget):
         info_card_layout.addWidget(info_desc)
         info_card_layout.addWidget(info_btn)
         info_card_layout.setAlignment(Qt.AlignCenter)
-
+        
         # Add cards to layout
         cards_layout.addWidget(pdf_card)
         cards_layout.addWidget(db_card)
@@ -1588,15 +1264,14 @@ class PDFSplitterApp(QMainWindow, ThemeAwareWidget):
         
         main_layout.addLayout(cards_layout)
         
-        # Drop zone
+        # Drop zone area
         drop_frame = QFrame()
         drop_frame.setObjectName("card")
-        drop_frame.setAttribute(Qt.WA_StyledBackground, True)
-        drop_frame.setAutoFillBackground(True)
+        drop_frame.setProperty("class", "card")
         drop_layout = QVBoxLayout(drop_frame)
         
         drop_icon = QLabel()
-        drop_icon.setPixmap(self.style().standardPixmap(QStyle.SP_DirOpenIcon).scaled(32, 32))
+        drop_icon.setPixmap(self.style().standardPixmap(QStyle.SP_DirOpenIcon).scaled(32, 32, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         drop_icon.setAlignment(Qt.AlignCenter)
         
         drop_label = QLabel("Drag and drop PDF file here")
@@ -1608,24 +1283,15 @@ class PDFSplitterApp(QMainWindow, ThemeAwareWidget):
         
         main_layout.addWidget(drop_frame)
         
-        # Stats label
+        # Stats section
         self.stats_label = QLabel("No data available")
         self.stats_label.setAlignment(Qt.AlignCenter)
         main_layout.addWidget(self.stats_label)
         
-        # Status bar
-        self.status_bar = QStatusBar()
-        self.setStatusBar(self.status_bar)
-        self.status_label = QLabel("Database Status: Initializing...")
-        self.status_bar.addWidget(self.status_label)
-
-        # Set window properties
         self.setAcceptDrops(True)
         self.setWindowTitle('Paystub Manager')
         self.setGeometry(300, 300, 800, 600)
-        
-        # Initial style update
-        self.updateStyle()
+        self.show()
         
         # Update stats after initialization
         QTimer.singleShot(500, self.update_stats)
